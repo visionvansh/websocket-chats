@@ -224,23 +224,38 @@ async function testPrismaConnection() {
   }
 }
 
-// Replace the WebSocket server creation (around line 120)
+// ✅ IMPROVED: More flexible origin validation
 const wss = new WebSocket.Server({ 
   server,
-  // Add CORS for production
   verifyClient: (info, callback) => {
     const origin = info.origin;
+    
+    // ✅ Allow connections without origin (mobile apps, Postman, etc.)
+    if (!origin) {
+      callback(true);
+      return;
+    }
+    
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
-      process.env.FRONTEND_URL, // Your Vercel URL
-      'https://your-app.vercel.app' // Replace with your actual domain
-    ];
+      'https://localhost:3000',
+      'https://localhost:3001',
+      process.env.FRONTEND_URL,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+    ].filter(Boolean);
     
-    if (allowedOrigins.includes(origin) || !origin) {
+    // ✅ Allow all Vercel preview deployments
+    const isVercel = origin?.includes('.vercel.app');
+    const isAllowed = allowedOrigins.some(allowed => 
+      origin === allowed || origin?.startsWith(allowed)
+    );
+    
+    if (isAllowed || isVercel) {
+      console.log('✅ Accepted connection from:', origin);
       callback(true);
     } else {
-      console.log('❌ Rejected connection from origin:', origin);
+      console.log('❌ Rejected connection from:', origin);
       callback(false, 403, 'Forbidden');
     }
   }
@@ -250,11 +265,18 @@ const wss = new WebSocket.Server({
 async function authenticateUser(request) {
   try {
     if (!prisma || !prisma.student) {
+      console.error('❌ Auth: Database not available');
       throw new Error('Database connection not available');
     }
 
     const cookies = cookie.parse(request.headers.cookie || '');
     const token = cookies['auth-token'];
+    
+    console.log('🔐 Auth attempt:', {
+      hasCookie: !!request.headers.cookie,
+      hasToken: !!token,
+      tokenPreview: token ? `${token.substring(0, 20)}...` : 'none'
+    });
     
     if (!token) {
       throw new Error('No auth token');
@@ -266,9 +288,8 @@ async function authenticateUser(request) {
       throw new Error('Invalid token payload');
     }
 
-    console.log('Looking up user:', decoded.userId);
+    console.log('✅ Token decoded, looking up user:', decoded.userId);
     
-    // ✅ UPDATED: Include avatars in user query
     const user = await prisma.student.findUnique({
       where: { id: decoded.userId },
       select: {
@@ -295,10 +316,10 @@ async function authenticateUser(request) {
       throw new Error('User not found');
     }
 
-    console.log('✅ User found:', user.username, '| Avatars:', user.avatars?.length || 0);
+    console.log('✅ User authenticated:', user.username);
     return user;
   } catch (error) {
-    console.error('Auth error:', error.message);
+    console.error('❌ Auth error:', error.message);
     return null;
   }
 }
