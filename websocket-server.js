@@ -262,23 +262,32 @@ const wss = new WebSocket.Server({
 });
 
 // Helper: Parse cookies and authenticate
+// ✅ FIXED: Accept token from query string OR cookies
 async function authenticateUser(request) {
   try {
     if (!prisma || !prisma.student) {
-      console.error('❌ Auth: Database not available');
       throw new Error('Database connection not available');
     }
 
-    const cookies = cookie.parse(request.headers.cookie || '');
-    const token = cookies['auth-token'];
+    // ✅ TRY 1: Get token from query string (for cross-origin WebSocket)
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    let token = url.searchParams.get('token');
+    
+    // ✅ TRY 2: Fallback to cookies (for same-origin)
+    if (!token) {
+      const cookies = cookie.parse(request.headers.cookie || '');
+      token = cookies['auth-token'];
+    }
     
     console.log('🔐 Auth attempt:', {
-      hasCookie: !!request.headers.cookie,
-      hasToken: !!token,
-      tokenPreview: token ? `${token.substring(0, 20)}...` : 'none'
+      hasQueryToken: !!url.searchParams.get('token'),
+      hasCookieToken: !!token,
+      origin: request.headers.origin,
+      host: request.headers.host
     });
     
     if (!token) {
+      console.error('❌ No token found in query or cookies');
       throw new Error('No auth token');
     }
 
@@ -288,7 +297,7 @@ async function authenticateUser(request) {
       throw new Error('Invalid token payload');
     }
 
-    console.log('✅ Token decoded, looking up user:', decoded.userId);
+    console.log('✅ Token decoded, user ID:', decoded.userId);
     
     const user = await prisma.student.findUnique({
       where: { id: decoded.userId },
@@ -313,6 +322,7 @@ async function authenticateUser(request) {
     });
 
     if (!user) {
+      console.error('❌ User not found in database:', decoded.userId);
       throw new Error('User not found');
     }
 
@@ -320,6 +330,9 @@ async function authenticateUser(request) {
     return user;
   } catch (error) {
     console.error('❌ Auth error:', error.message);
+    if (error.name === 'JsonWebTokenError') {
+      console.error('❌ JWT verification failed');
+    }
     return null;
   }
 }
