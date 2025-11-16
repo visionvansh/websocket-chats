@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 const connections = new Map(); // roomId -> Set of clients
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const AUTH_TAG_LENGTH = 16;
