@@ -27,6 +27,57 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Self-ping mechanism to prevent Render sleep
+let keepAliveInterval = null;
+
+function startKeepAlive() {
+  // Only enable on production (Render)
+  if (process.env.NODE_ENV === 'production' && process.env.RENDER_SERVICE_NAME) {
+    const PING_INTERVAL = 2 * 60 * 1000; // 2 minutes
+    const serviceUrl = process.env.RENDER_EXTERNAL_URL || `https://${process.env.RENDER_SERVICE_NAME}.onrender.com`;
+    
+    console.log('🔄 Keep-alive enabled:', serviceUrl);
+    
+    keepAliveInterval = setInterval(async () => {
+      try {
+        const http = require('https');
+        const startTime = Date.now();
+        
+        http.get(`${serviceUrl}/health`, (res) => {
+          const duration = Date.now() - startTime;
+          console.log(`✅ Keep-alive ping successful (${duration}ms) - Status: ${res.statusCode}`);
+        }).on('error', (err) => {
+          console.error('❌ Keep-alive ping failed:', err.message);
+        });
+        
+      } catch (error) {
+        console.error('❌ Keep-alive error:', error.message);
+      }
+    }, PING_INTERVAL);
+    
+    // Initial ping after 30 seconds
+    setTimeout(() => {
+      console.log('🔄 Sending initial keep-alive ping...');
+      const http = require('https');
+      http.get(`${serviceUrl}/health`, () => {
+        console.log('✅ Initial ping sent');
+      }).on('error', (err) => {
+        console.error('❌ Initial ping failed:', err.message);
+      });
+    }, 30000);
+  } else {
+    console.log('ℹ️ Keep-alive disabled (development mode)');
+  }
+}
+
+// Stop keep-alive on shutdown
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    console.log('🛑 Keep-alive stopped');
+  }
+}
+
 // Create HTTP server with Express
 const server = http.createServer(app);
 
@@ -1288,7 +1339,11 @@ async function startServer() {
   }
 
   server.listen(PORT, () => {
-    console.log(`✅ WebSocket server running on ws://localhost:${PORT}`);
+    console.log(`✅ WebSocket server running on port ${PORT}`);
+    console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    
+    // Start keep-alive mechanism
+    startKeepAlive();
   });
 }
 
@@ -1297,6 +1352,9 @@ startServer();
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('🛑 Shutting down WebSocket server...');
+  
+  // Stop keep-alive first
+  stopKeepAlive();
   
   wss.clients.forEach(client => {
     client.close();
@@ -1307,4 +1365,11 @@ process.on('SIGTERM', async () => {
     console.log('✅ Server closed');
     process.exit(0);
   });
+});
+
+process.on('SIGINT', async () => {
+  console.log('🛑 Received SIGINT...');
+  stopKeepAlive();
+  await prisma.$disconnect();
+  process.exit(0);
 });
