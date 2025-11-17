@@ -354,6 +354,9 @@ function broadcastToRoom(roomId, event, data, excludeClientId = null) {
 // WebSocket connection handler
 wss.on('connection', async (ws, request) => {
   console.log('🔌 New WebSocket connection attempt');
+  console.log('📍 Origin:', request.headers.origin);
+  console.log('🌐 Host:', request.headers.host);
+  console.log('🔗 URL:', request.url);
 
   let user = null;
   let roomId = null;
@@ -368,13 +371,16 @@ wss.on('connection', async (ws, request) => {
     console.log('❌ WS: Authentication failed');
     ws.send(JSON.stringify({
       event: 'error',
-      data: { message: 'Authentication failed', code: 'AUTH_FAILED' }
+      data: { 
+        message: 'Authentication failed. Please log in again.', 
+        code: 'AUTH_FAILED' 
+      }
     }));
-    ws.close();
+    ws.close(1008, 'Authentication failed'); // ✅ Use proper close code
     return;
   }
 
-  console.log('✅ WS: User authenticated:', user.id);
+  console.log('✅ WS: User authenticated:', user.username, user.id);
 
   // Send authentication success
   ws.send(JSON.stringify({
