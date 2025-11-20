@@ -1449,10 +1449,16 @@ model ChatMessage {
   voiceDuration     Int?     // in seconds
   voiceUrl          String?
   
-  // Media messages
+  // ✅ COMPLETE MEDIA FIELDS
   mediaUrl          String?
-  mediaType         String?
+  mediaType         String?  // 'image' | 'video' | 'pdf'
   mediaThumbnail    String?
+  mediaFileName     String?  // ✅ ADD THIS
+  mediaFileSize     Int?     // ✅ ADD THIS
+  mediaPublicId     String?  // ✅ ADD THIS
+  mediaWidth        Int?     // ✅ ADD THIS
+  mediaHeight       Int?     // ✅ ADD THIS
+  mediaDuration     Float?   // ✅ ADD THIS (was Int? change to Float?)
   
   // Status
   isEdited          Boolean  @default(false)
@@ -1482,6 +1488,7 @@ model ChatMessage {
   @@index([createdAt])
   @@index([replyToId])
   @@index([isDeleted])
+  @@index([mediaType])  // ✅ ADD INDEX for filtering media messages
 }
 
 model ChatReaction {
@@ -2111,23 +2118,25 @@ model Payment {
   id                String   @id @default(cuid())
   
   // Transaction details
-  stripePaymentId   String   @unique
+  stripePaymentId   String   @unique // Now used for both Stripe and PayPal IDs
   stripeSessionId   String?  @unique
   amount            Decimal  @db.Decimal(10, 2)
   currency          String   @default("USD")
-  status            String   // pending, succeeded, failed, refunded
+  status            String   // pending, approved, succeeded, failed, refunded
+  
+  // ✅ ADD THIS FIELD
+  paymentMethod     String?  @default("stripe") // stripe, paypal
   
   // Course & Users
   courseId          String
-  buyerId           String   // Student who bought
-  sellerId          String   // Course owner
+  buyerId           String
+  sellerId          String
   
   // Platform fee (optional)
   platformFee       Decimal? @db.Decimal(10, 2)
-  sellerAmount      Decimal  @db.Decimal(10, 2) // Amount after fees
+  sellerAmount      Decimal  @db.Decimal(10, 2)
   
   // Metadata
-  paymentMethod     String?
   customerEmail     String?
   refundReason      String?
   refundedAt        DateTime?
@@ -2144,6 +2153,7 @@ model Payment {
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
+  @@index([paymentMethod])
   @@index([createdAt])
 }
 
@@ -2240,3 +2250,70 @@ model CustomCoursesAccess {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+
+
+model EarlyAccessSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  
+  // Device Fingerprinting
+  deviceFingerprint String?  @unique
+  
+  // Location Data
+  ipAddress String?
+  country   String?
+  city      String?
+  region    String?
+  timezone  String?
+  
+  // Browser/Device Info
+  userAgent String?
+  browser   String?
+  os        String?
+  device    String?
+  
+  // Screen Info
+  screenWidth  Int?
+  screenHeight Int?
+  
+  // Referral Info
+  referrer     String?
+  landingPage  String?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  
+  // Engagement
+  language     String?
+  
+  // Visit tracking
+  lastVisitAt  DateTime @default(now())
+  visitCount   Int      @default(1)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([email])
+  @@index([deviceFingerprint])
+  @@index([country])
+  @@index([createdAt])
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
